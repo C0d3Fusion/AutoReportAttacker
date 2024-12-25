@@ -1,135 +1,143 @@
-# main.py
+# coding=utf-8
+#!/usr/bin/env python3
 
-import random
+from libs.check_modules import check_modules
 from sys import exit
 from os import _exit
-from multiprocessing import Process
-from colorama import Fore, Style
-from libs.check_modules import check_modules
+
+check_modules()
+
+from os import path
+
 from libs.logo import print_logo
-from libs.utils import print_success, print_error, ask_question, print_status, parse_proxy_file
-from libs.proxy_harvester import find_proxies
-from libs.attack import report_profile_attack, report_video_attack
-from threading import Thread
+from libs.utils import print_success
+from libs.utils import print_error
+from libs.utils import ask_question
+from libs.utils import print_status
+from libs.utils import parse_proxy_file
+from libs.proxy_harvester import find_proxies, validate_proxies
+from libs.attack import report_profile_attack
+from libs.attack import report_video_attack
+
+from multiprocessing import Process
+from colorama import Fore, Back, Style
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-def get_working_proxy(proxies):
-    """Returns a working proxy after testing"""
-    for proxy in proxies:
-        try:
-            if test_proxy(proxy):  # test_proxy function should check proxy validity
-                return proxy
-        except:
-            continue
-    return None
-
-def test_proxy(proxy):
-    """Simulate checking proxy validity"""
-    try:
-        # Simulate checking proxy validity
-        response = requests.get("http://example.com", proxies={"http": proxy, "https": proxy}, timeout=5)
-        return response.status_code == 200
-    except requests.RequestException:
-        return False
-
 def profile_attack_process(username, proxy_list):
-    """Attack profile with proxy rotation and retry mechanism"""
-    proxy = get_working_proxy(proxy_list)
-    if proxy is None:
-        print("No working proxy found. Retrying...")
+    if len(proxy_list) == 0:
+        for _ in range(10):
+            report_profile_attack(username, None)
         return
 
-    report_profile_attack(username, proxy)
+    for proxy in proxy_list:
+        report_profile_attack(username, proxy)
 
 def video_attack_process(video_url, proxy_list):
-    """Attack video with proxy rotation and retry mechanism"""
-    proxy = get_working_proxy(proxy_list)
-    if proxy is None:
-        print("No working proxy found. Retrying...")
+    if len(proxy_list) == 0:
+        for _ in range(10):
+            report_video_attack(video_url, None)
         return
 
-    report_video_attack(video_url, proxy)
+    for proxy in proxy_list:
+        report_video_attack(video_url, proxy)
 
 def video_attack(proxies):
     video_url = ask_question("Enter the link of the video you want to report")
     print(Style.RESET_ALL)
 
-    if not proxies:
+    if len(proxies) == 0:
         for k in range(5):
-            p = Process(target=video_attack_process, args=(video_url, []))
+            p = Process(target=video_attack_process, args=(video_url, [],))
             p.start()
-            print_status(f"{k + 1}. Transaction Opened!")
+            print_status(str(k + 1) + ". Transaction Opened!")
         return
 
     chunk = list(chunks(proxies, 10))
+
+    print("")
     print_status("Video complaint attack is starting!\n")
 
-    for i, proxy_list in enumerate(chunk):
-        p = Process(target=video_attack_process, args=(video_url, proxy_list))
+    i = 1
+    for proxy_list in chunk:
+        p = Process(target=video_attack_process, args=(video_url, proxy_list,))
         p.start()
-        print_status(f"{i + 1}. Transaction Opened!")
+        print_status(str(i) + ". Transaction Opened!")
+        i = i + 1
 
 def profile_attack(proxies):
     username = ask_question("Enter the username of the person you want to report")
     print(Style.RESET_ALL)
 
-    if not proxies:
+    if len(proxies) == 0:
         for k in range(5):
-            p = Process(target=profile_attack_process, args=(username, []))
+            p = Process(target=profile_attack_process, args=(username, [],))
             p.start()
-            print_status(f"{k + 1}. Transaction Opened!")
+            print_status(str(k + 1) + ". Transaction Opened!")
         return
 
     chunk = list(chunks(proxies, 10))
+
+    print("")
     print_status("Profile complaint attack is starting!\n")
 
-    for i, proxy_list in enumerate(chunk):
-        p = Process(target=profile_attack_process, args=(username, proxy_list))
+    i = 1
+    for proxy_list in chunk:
+        p = Process(target=profile_attack_process, args=(username, proxy_list,))
         p.start()
-        print_status(f"{i + 1}. Transaction Opened!")
+        print_status(str(i) + ". Transaction Opened!")
+        i = i + 1
 
-def proxy_handling():
-    ret = ask_question("Would you like to use a proxy? [Y/N]")
-    proxies = []
-
-    if ret.lower() == "y":
-        ret = ask_question("Would you like to collect your proxies from the internet? [Y/N]")
-        if ret.lower() == "y":
-            print_status("Gathering proxies from the internet... This may take some time.")
-            proxies = find_proxies()
-        elif ret.lower() == "n":
-            print_status("Please have a maximum of 50 proxies in a file.")
-            file_path = ask_question("Enter the path to your proxy list")
-            proxies = parse_proxy_file(file_path)
-        else:
-            print_error("Answer not understood, exiting!")
-            exit()
-        
-        print_success(f"{len(proxies)} proxies found!")
-    elif ret.lower() == "n":
-        pass
+def get_proxies_automatically():
+    """Fetch proxies from the internet and validate them."""
+    print_status("Gathering proxies from the internet... This may take a while.")
+    proxies = find_proxies()  # Fetch proxies from the internet
+    if proxies:
+        print_status(f"{len(proxies)} proxies found, validating proxies...")
+        valid_proxies = validate_proxies(proxies)  # Validate proxies
+        print_success(f"{len(valid_proxies)} valid proxies found!")
+        return valid_proxies
     else:
-        print_error("Answer not understood, exiting!")
-        exit()
-
-    return proxies
+        print_error("No proxies found. Proceeding without proxies.")
+        return []
 
 def main():
     print_success("Modules loaded!\n")
 
-    proxies = proxy_handling()
+    ret = ask_question("Would you like to use a proxy? [Y/N]")
 
+    proxies = []
+
+    if ret.lower() == "y":
+        ret = ask_question("Would you like to collect your proxies from the internet? [Y/N]")
+
+        if ret.lower() == "y":
+            proxies = get_proxies_automatically()  # Automatically fetch and validate proxies
+        elif ret.lower() == "n":
+            print_status("Please have a maximum of 50 proxies in a file!")
+            file_path = ask_question("Enter the path to your proxy list")
+            proxies = parse_proxy_file(file_path)  # Parse proxies from a file
+        else:
+            print_error("Answer not understood, exiting!")
+            exit()
+
+    elif ret.lower() == "n":
+        print_status("Proceeding without proxies.\n")
+    else:
+        print_error("Answer not understood, exiting!")
+        exit()
+
+    print("")
     print_status("1 - Report the profile.")
     print_status("2 - Report a video.")
     report_choice = ask_question("Please select the complaint method")
     print("")
 
     if not report_choice.isdigit() or int(report_choice) not in [1, 2]:
-        print_error("The answer is not understood.")
+        print_error("Invalid choice, exiting!")
         exit(0)
 
     if int(report_choice) == 1:
